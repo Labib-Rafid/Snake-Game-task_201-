@@ -111,6 +111,18 @@ bool checkSelfCollision(vector<SnakeSegment>& snake) {
     return false;
 }
 
+bool checkBorderCollision(vector<SnakeSegment>& snake) {
+    int headX = snake.front().x;
+    int headY = snake.front().y;
+
+    // Check if snake's head is out of bounds
+    if (headX < 0 || headX >= SCREEN_WIDTH || headY < 0 || headY >= SCREEN_HEIGHT) {
+        return true;
+    }
+
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
@@ -119,7 +131,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    srand(time(0)); // Seed the random number generator
+    //srand(time(0)); // Seed the random number generator
 
     vector<SnakeSegment> snake;
     int initialX = SCREEN_WIDTH / 2;
@@ -174,6 +186,10 @@ int main(int argc, char* argv[]) {
 
         if(checkSelfCollision(snake)){
             return 1;
+        }
+        if(checkBorderCollision(snake)){
+            cout << "Game Over! Snake collided with window border." << endl;
+            running = false;
         }
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
