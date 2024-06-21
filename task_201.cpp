@@ -1,6 +1,8 @@
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <vector>
+#include <cstdlib>
+#include <ctime>
 
 using namespace std;
 
@@ -8,11 +10,14 @@ using namespace std;
 #define SCREEN_HEIGHT 520
 #define SNAKE_SIZE 20
 #define INITIAL_SNAKE_LENGTH 3
-#define SNAKE_SPEED 1
+#define SNAKE_SPEED 10
 
 struct SnakeSegment {
     int x, y;
-    //SnakeSegment(int _x, int _y) : x(_x), y(_y) {}
+};
+
+struct Food {
+    int x, y;
 };
 
 bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
@@ -51,8 +56,13 @@ void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
     }
 }
 
-void moveSnake(vector<SnakeSegment>& snake, char direction) {
-    // Move snake by adding a new head segment in the current moving direction
+void drawFood(SDL_Renderer* renderer, Food& food) {
+    SDL_Rect foodRect = { food.x, food.y, SNAKE_SIZE, SNAKE_SIZE };
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Red color for food
+    SDL_RenderFillRect(renderer, &foodRect);
+}
+
+void moveSnake(vector<SnakeSegment>& snake, char direction, bool grow) {
     int newX = snake.front().x;
     int newY = snake.front().y;
 
@@ -73,11 +83,20 @@ void moveSnake(vector<SnakeSegment>& snake, char direction) {
             break;
     }
 
-    // Insert new head segment at the beginning of the snake vector
     snake.insert(snake.begin(), {newX, newY});
 
-    // Remove the last segment to simulate movement
-    snake.pop_back();
+    if (!grow) {
+        snake.pop_back();
+    }
+}
+
+bool checkFoodCollision(vector<SnakeSegment>& snake, Food& food) {
+    return (snake.front().x == food.x && snake.front().y == food.y);
+}
+
+void repositionFood(Food& food) {
+    food.x = (rand() % (SCREEN_WIDTH / SNAKE_SIZE)) * SNAKE_SIZE;
+    food.y = (rand() % (SCREEN_HEIGHT / SNAKE_SIZE)) * SNAKE_SIZE;
 }
 
 int main(int argc, char* argv[]) {
@@ -88,7 +107,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Initialize snake with initial segments
+    srand(time(0)); // Seed the random number generator
+
     vector<SnakeSegment> snake;
     int initialX = SCREEN_WIDTH / 2;
     int initialY = SCREEN_HEIGHT / 2;
@@ -96,9 +116,13 @@ int main(int argc, char* argv[]) {
         snake.push_back({initialX - i * SNAKE_SIZE, initialY});
     }
 
-    char currentDirection = 'R'; // Snake starts by moving right
+    Food food;
+    repositionFood(food);
+
+    char currentDirection = 'R';
     SDL_Event event;
     bool running = true;
+    bool grow = false;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -107,7 +131,7 @@ int main(int argc, char* argv[]) {
             } else if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
                     case SDLK_UP:
-                        if (currentDirection != 'D') // Prevent opposite direction movement
+                        if (currentDirection != 'D')
                             currentDirection = 'U';
                         break;
                     case SDLK_DOWN:
@@ -128,24 +152,25 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Clear the screen
+        moveSnake(snake, currentDirection, grow);
+        grow = false;
+
+        if (checkFoodCollision(snake, food)) {
+            repositionFood(food);
+            grow = true;
+        }
+
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Move snake
-        moveSnake(snake, currentDirection);
-
-        // Draw snake
         drawSnake(renderer, snake);
+        drawFood(renderer, food);
 
-        // Update screen
         SDL_RenderPresent(renderer);
 
-        // Add delay to control snake's movement speed
         SDL_Delay(1000 / SNAKE_SPEED);
     }
 
-    // Cleanup and exit
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
