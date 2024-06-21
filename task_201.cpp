@@ -10,7 +10,7 @@ using namespace std;
 #define SCREEN_HEIGHT 520
 #define SNAKE_SIZE 20
 #define INITIAL_SNAKE_LENGTH 3
-#define SNAKE_SPEED 10
+#define SNAKE_SPEED 7
 
 struct SnakeSegment {
     int x, y;
@@ -99,6 +99,18 @@ void repositionFood(Food& food) {
     food.y = (rand() % (SCREEN_HEIGHT / SNAKE_SIZE)) * SNAKE_SIZE;
 }
 
+bool checkSelfCollision(vector<SnakeSegment>& snake) {
+    int headX = snake.front().x;
+    int headY = snake.front().y;
+
+    for (int i = 1; i < snake.size(); ++i) {
+        if (snake[i].x == headX && snake[i].y == headY) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
@@ -158,6 +170,10 @@ int main(int argc, char* argv[]) {
         if (checkFoodCollision(snake, food)) {
             repositionFood(food);
             grow = true;
+        }
+
+        if(checkSelfCollision(snake)){
+            return 1;
         }
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
