@@ -1,13 +1,16 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <iostream>
 #include <vector>
 #include <cstdlib>
 #include <ctime>
+#include <string>
+
 
 using namespace std;
 
 #define SCREEN_WIDTH 1080
-#define SCREEN_HEIGHT 520
+#define SCREEN_HEIGHT 680
 #define SNAKE_SIZE 20
 #define INITIAL_SNAKE_LENGTH 3
 #define SNAKE_SPEED 7
@@ -23,6 +26,11 @@ struct Food {
 bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         cout << "SDL initialization failed: \n" << SDL_GetError() << endl;
+        return false;
+    }
+
+    if (TTF_Init() == -1) {
+        cout << "TTF initialization failed: \n" << TTF_GetError() << endl;
         return false;
     }
 
@@ -49,12 +57,29 @@ bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
 }
 
 void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
-    for (auto& segment : snake) {
-        SDL_Rect segmentRect = { segment.x, segment.y, SNAKE_SIZE, SNAKE_SIZE };
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Green color for snake
-        SDL_RenderFillRect(renderer, &segmentRect);
+    for (size_t i = 0; i < snake.size(); ++i) {
+        SDL_Rect segmentRect = { snake[i].x, snake[i].y, SNAKE_SIZE, SNAKE_SIZE };
+
+        if (i == 0) {
+            // Head of the snake
+            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); // Blue color for the head
+            SDL_RenderFillRect(renderer, &segmentRect);
+
+            // Draw a dot in the middle of the head
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White color for the dot
+            int dotSize = SNAKE_SIZE / 4;
+            SDL_Rect dotRect = { snake[i].x + SNAKE_SIZE / 2 - dotSize / 2,
+                                 snake[i].y + SNAKE_SIZE / 2 - dotSize / 2,
+                                 dotSize, dotSize };
+            SDL_RenderFillRect(renderer, &dotRect);
+        } else {
+            // Body of the snake
+            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Green color for the body
+            SDL_RenderFillRect(renderer, &segmentRect);
+        }
     }
 }
+
 
 void drawFood(SDL_Renderer* renderer, Food& food) {
     SDL_Rect foodRect = { food.x, food.y, SNAKE_SIZE, SNAKE_SIZE };
@@ -116,18 +141,34 @@ bool checkBorderCollision(vector<SnakeSegment>& snake) {
     int headY = snake.front().y;
 
     // Check if snake's head is out of bounds
-    if (headX < 0 || headX >= SCREEN_WIDTH || headY < 0 || headY >= SCREEN_HEIGHT) {
+    if (headX <= 0 || headX >= SCREEN_WIDTH || headY <= 0 || headY >= SCREEN_HEIGHT) {
         return true;
     }
 
     return false;
 }
 
+void renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, TTF_Font* font, SDL_Color color) {
+    SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_Rect dstrect = { x, y, surface->w, surface->h };
+    SDL_RenderCopy(renderer, texture, NULL, &dstrect);
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
+}
+
+
 int main(int argc, char* argv[]) {
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
 
     if (!initializeSDL(&window, &renderer)) {
+        return 1;
+    }
+
+    TTF_Font* font = TTF_OpenFont("font11.ttf", 50);
+    if (!font) {
+        cout << "Font loading failed: \n" << TTF_GetError() << endl;
         return 1;
     }
 
@@ -147,6 +188,7 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
     bool running = true;
     bool grow = false;
+    int points = 0;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -182,6 +224,7 @@ int main(int argc, char* argv[]) {
         if (checkFoodCollision(snake, food)) {
             repositionFood(food);
             grow = true;
+            points += 10;
         }
 
         if(checkSelfCollision(snake)){
@@ -197,6 +240,9 @@ int main(int argc, char* argv[]) {
 
         drawSnake(renderer, snake);
         drawFood(renderer, food);
+
+        SDL_Color textColor = {255, 255, 255, 255};
+        renderText(renderer, "Score: " + to_string(points), 10, 10, font, textColor);
 
         SDL_RenderPresent(renderer);
 
