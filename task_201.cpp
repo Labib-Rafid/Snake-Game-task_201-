@@ -1,5 +1,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mixer.h>
 #include <iostream>
 #include <vector>
 #include <cstdlib>
@@ -45,6 +47,16 @@ bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
         return false;
     }
 
+    if (!IMG_Init(IMG_INIT_JPG)) {
+        cout << "SDL_image initialization failed: \n" << IMG_GetError() << endl;
+        return false;
+    }
+
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        cout << "SDL_mixer initialization failed: \n" << Mix_GetError() << endl;
+        return false;
+    }
+
     *window = SDL_CreateWindow("Snake Game",
                                SDL_WINDOWPOS_CENTERED,
                                SDL_WINDOWPOS_CENTERED,
@@ -65,6 +77,21 @@ bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
     }
 
     return true;
+}
+
+SDL_Texture* loadTexture(const std::string& path, SDL_Renderer* renderer) {
+    SDL_Texture* newTexture = NULL;
+    SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+    if (loadedSurface == NULL) {
+        cout << "Unable to load image " << path << " SDL_image Error: " << IMG_GetError() << endl;
+    } else {
+        newTexture = SDL_CreateTextureFromSurface(renderer, loadedSurface);
+        if (newTexture == NULL) {
+            cout << "Unable to create texture from " << path << " SDL Error: " << SDL_GetError() << endl;
+        }
+        SDL_FreeSurface(loadedSurface);
+    }
+    return newTexture;
 }
 
 void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
@@ -172,23 +199,29 @@ void renderButton(SDL_Renderer* renderer, Button& button, TTF_Font* font) {
     SDL_Color hoverColor = {200, 200, 200, 255};
     SDL_Color color = button.isHovered ? hoverColor : textColor;
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 60, 40, 0, 255); // Blackish brown color for button background
     SDL_RenderFillRect(renderer, &button.rect);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White color for button border
     SDL_RenderDrawRect(renderer, &button.rect);
     renderText(renderer, button.text, button.rect.x + 10, button.rect.y + 10, font, color);
 }
 
-void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font, std::vector<Button>& buttons) {
+void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font, std::vector<Button>& buttons, SDL_Texture* background) {
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, background, NULL, NULL); // Render the background image
+
     for (auto& button : buttons) {
         renderButton(renderer, button, font);
     }
 }
 
 void renderGameOver(SDL_Renderer* renderer, TTF_Font* font, int points, std::vector<Button>& buttons) {
-    SDL_Color textColor = {255, 255, 255, 255};
-    renderText(renderer, "Game Over", SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 200, font, textColor);
-    renderText(renderer, "Score: " + to_string(points), SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 150, font, textColor);
+    SDL_RenderClear(renderer);
+
+    SDL_Color textColor = {0, 0, 0, 255}; // Black color for text
+    renderText(renderer, "Game Over", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 100, font, textColor);
+    renderText(renderer, "Score: " + to_string(points), SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, font, textColor);
+
     for (auto& button : buttons) {
         renderButton(renderer, button, font);
     }
@@ -206,9 +239,8 @@ void resetGame(vector<SnakeSegment>& snake, char& currentDirection, Food& food, 
     for (int i = 0; i < INITIAL_SNAKE_LENGTH; ++i) {
         snake.push_back({initialX - i * SNAKE_SIZE, initialY});
     }
-
-    repositionFood(food);
     currentDirection = 'R';
+    repositionFood(food);
     points = 0;
 }
 
@@ -220,9 +252,25 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    TTF_Font* font = TTF_OpenFont("font2.ttf", 40);
+    TTF_Font* font = TTF_OpenFont("font11.ttf", 40);
     if (!font) {
         cout << "Font loading failed: \n" << TTF_GetError() << endl;
+        return 1;
+    }
+
+    SDL_Texture* mainMenuBackground = loadTexture("mainmenu.jpg", renderer);
+    if (!mainMenuBackground) {
+        return 1;
+    }
+
+    SDL_Texture* gameplayBackground = loadTexture("gameplay.jpg", renderer);
+    if (!gameplayBackground) {
+        return 1;
+    }
+
+    Mix_Chunk* eatSound = Mix_LoadWAV("eat.mp3");
+    if (!eatSound) {
+        cout << "Failed to load eat sound effect: " << Mix_GetError() << endl;
         return 1;
     }
 
@@ -243,6 +291,7 @@ int main(int argc, char* argv[]) {
     bool running = true;
     bool grow = false;
     int points = 0;
+
     GameState gameState = MAIN_MENU;
 
     vector<Button> buttons = {
@@ -322,11 +371,8 @@ int main(int argc, char* argv[]) {
             button.isHovered = isMouseOverButton(button, mouseX, mouseY);
         }
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-
         if (gameState == MAIN_MENU) {
-            renderMainMenu(renderer, font, buttons);
+            renderMainMenu(renderer, font, buttons, mainMenuBackground);
         } else if (gameState == GAMEPLAY) {
             moveSnake(snake, currentDirection, grow);
             grow = false;
@@ -335,15 +381,14 @@ int main(int argc, char* argv[]) {
                 repositionFood(food);
                 grow = true;
                 points += 10;
+                Mix_PlayChannel(-1, eatSound, 0); // Play the eat sound effect
             }
 
             if (checkSelfCollision(snake) || checkBorderCollision(snake)) {
                 gameState = GAME_OVER;
             }
 
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderClear(renderer);
-
+            SDL_RenderCopy(renderer, gameplayBackground, NULL, NULL); // Render the gameplay background
             drawSnake(renderer, snake);
             drawFood(renderer, food);
 
@@ -357,8 +402,15 @@ int main(int argc, char* argv[]) {
         SDL_Delay(1000 / SNAKE_SPEED);
     }
 
+    Mix_FreeChunk(eatSound);
+    SDL_DestroyTexture(mainMenuBackground);
+    SDL_DestroyTexture(gameplayBackground);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    TTF_CloseFont(font);
+    Mix_Quit();
+    IMG_Quit();
+    TTF_Quit();
     SDL_Quit();
 
     return 0;
