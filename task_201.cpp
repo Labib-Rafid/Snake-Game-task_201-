@@ -6,7 +6,6 @@
 #include <ctime>
 #include <string>
 
-
 using namespace std;
 
 #define SCREEN_WIDTH 1080
@@ -14,6 +13,11 @@ using namespace std;
 #define SNAKE_SIZE 20
 #define INITIAL_SNAKE_LENGTH 3
 #define SNAKE_SPEED 7
+
+enum GameState {
+    MAIN_MENU,
+    GAMEPLAY
+};
 
 struct SnakeSegment {
     int x, y;
@@ -80,7 +84,6 @@ void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
     }
 }
 
-
 void drawFood(SDL_Renderer* renderer, Food& food) {
     SDL_Rect foodRect = { food.x, food.y, SNAKE_SIZE, SNAKE_SIZE };
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Red color for food
@@ -128,7 +131,7 @@ bool checkSelfCollision(vector<SnakeSegment>& snake) {
     int headX = snake.front().x;
     int headY = snake.front().y;
 
-    for (int i = 1; i < snake.size(); ++i) {
+    for (size_t i = 1; i < snake.size(); ++i) {
         if (snake[i].x == headX && snake[i].y == headY) {
             return true;
         }
@@ -141,7 +144,7 @@ bool checkBorderCollision(vector<SnakeSegment>& snake) {
     int headY = snake.front().y;
 
     // Check if snake's head is out of bounds
-    if (headX <= 0 || headX >= SCREEN_WIDTH || headY <= 0 || headY >= SCREEN_HEIGHT) {
+    if (headX < 0 || headX >= SCREEN_WIDTH || headY < 0 || headY >= SCREEN_HEIGHT) {
         return true;
     }
 
@@ -157,6 +160,10 @@ void renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, T
     SDL_DestroyTexture(texture);
 }
 
+void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font) {
+    SDL_Color textColor = {255, 255, 255, 255};
+    renderText(renderer, "Play Game", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, font, textColor);
+}
 
 int main(int argc, char* argv[]) {
     SDL_Window* window = NULL;
@@ -166,13 +173,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    TTF_Font* font = TTF_OpenFont("font11.ttf", 50);
+    TTF_Font* font = TTF_OpenFont("font11.ttf", 70);
     if (!font) {
         cout << "Font loading failed: \n" << TTF_GetError() << endl;
         return 1;
     }
 
-    //srand(time(0)); // Seed the random number generator
+    srand(time(0)); // Seed the random number generator
 
     vector<SnakeSegment> snake;
     int initialX = SCREEN_WIDTH / 2;
@@ -189,64 +196,78 @@ int main(int argc, char* argv[]) {
     bool running = true;
     bool grow = false;
     int points = 0;
+    GameState gameState = MAIN_MENU;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 running = false;
             } else if (event.type == SDL_KEYDOWN) {
-                switch (event.key.keysym.sym) {
-                    case SDLK_UP:
-                        if (currentDirection != 'D')
-                            currentDirection = 'U';
-                        break;
-                    case SDLK_DOWN:
-                        if (currentDirection != 'U')
-                            currentDirection = 'D';
-                        break;
-                    case SDLK_LEFT:
-                        if (currentDirection != 'R')
-                            currentDirection = 'L';
-                        break;
-                    case SDLK_RIGHT:
-                        if (currentDirection != 'L')
-                            currentDirection = 'R';
-                        break;
-                    default:
-                        break;
+                if (gameState == MAIN_MENU) {
+                    if (event.key.keysym.sym == SDLK_RETURN) {
+                        gameState = GAMEPLAY;
+                    }
+                } else if (gameState == GAMEPLAY) {
+                    switch (event.key.keysym.sym) {
+                        case SDLK_UP:
+                            if (currentDirection != 'D')
+                                currentDirection = 'U';
+                            break;
+                        case SDLK_DOWN:
+                            if (currentDirection != 'U')
+                                currentDirection = 'D';
+                            break;
+                        case SDLK_LEFT:
+                            if (currentDirection != 'R')
+                                currentDirection = 'L';
+                            break;
+                        case SDLK_RIGHT:
+                            if (currentDirection != 'L')
+                                currentDirection = 'R';
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
         }
 
-        moveSnake(snake, currentDirection, grow);
-        grow = false;
+        if (gameState == MAIN_MENU) {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
+            renderMainMenu(renderer, font);
+            SDL_RenderPresent(renderer);
+        } else if (gameState == GAMEPLAY) {
+            moveSnake(snake, currentDirection, grow);
+            grow = false;
 
-        if (checkFoodCollision(snake, food)) {
-            repositionFood(food);
-            grow = true;
-            points += 10;
+            if (checkFoodCollision(snake, food)) {
+                repositionFood(food);
+                grow = true;
+                points += 10;
+            }
+
+            if (checkSelfCollision(snake)) {
+                return 1;
+            }
+            if (checkBorderCollision(snake)) {
+                cout << "Game Over! Snake collided with window border." << endl;
+                running = false;
+            }
+
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
+
+            drawSnake(renderer, snake);
+            drawFood(renderer, food);
+
+            SDL_Color textColor = {255, 255, 255, 255};
+            renderText(renderer, "Score: " + to_string(points), 10, 10, font, textColor);
+
+            SDL_RenderPresent(renderer);
+
+            SDL_Delay(1000 / SNAKE_SPEED);
         }
-
-        if(checkSelfCollision(snake)){
-            return 1;
-        }
-        if(checkBorderCollision(snake)){
-            cout << "Game Over! Snake collided with window border." << endl;
-            running = false;
-        }
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-
-        drawSnake(renderer, snake);
-        drawFood(renderer, food);
-
-        SDL_Color textColor = {255, 255, 255, 255};
-        renderText(renderer, "Score: " + to_string(points), 10, 10, font, textColor);
-
-        SDL_RenderPresent(renderer);
-
-        SDL_Delay(1000 / SNAKE_SPEED);
     }
 
     SDL_DestroyRenderer(renderer);
