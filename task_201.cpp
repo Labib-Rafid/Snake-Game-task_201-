@@ -16,7 +16,8 @@ using namespace std;
 
 enum GameState {
     MAIN_MENU,
-    GAMEPLAY
+    GAMEPLAY,
+    GAME_OVER
 };
 
 struct SnakeSegment {
@@ -25,6 +26,12 @@ struct SnakeSegment {
 
 struct Food {
     int x, y;
+};
+
+struct Button {
+    SDL_Rect rect;
+    std::string text;
+    bool isHovered;
 };
 
 bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer) {
@@ -160,9 +167,49 @@ void renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, T
     SDL_DestroyTexture(texture);
 }
 
-void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font) {
+void renderButton(SDL_Renderer* renderer, Button& button, TTF_Font* font) {
     SDL_Color textColor = {255, 255, 255, 255};
-    renderText(renderer, "Play Game", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, font, textColor);
+    SDL_Color hoverColor = {200, 200, 200, 255};
+    SDL_Color color = button.isHovered ? hoverColor : textColor;
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, &button.rect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &button.rect);
+    renderText(renderer, button.text, button.rect.x + 10, button.rect.y + 10, font, color);
+}
+
+void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font, std::vector<Button>& buttons) {
+    for (auto& button : buttons) {
+        renderButton(renderer, button, font);
+    }
+}
+
+void renderGameOver(SDL_Renderer* renderer, TTF_Font* font, int points, std::vector<Button>& buttons) {
+    SDL_Color textColor = {255, 255, 255, 255};
+    renderText(renderer, "Game Over", SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 200, font, textColor);
+    renderText(renderer, "Score: " + to_string(points), SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 150, font, textColor);
+    for (auto& button : buttons) {
+        renderButton(renderer, button, font);
+    }
+}
+
+bool isMouseOverButton(Button& button, int mouseX, int mouseY) {
+    return (mouseX > button.rect.x && mouseX < button.rect.x + button.rect.w &&
+            mouseY > button.rect.y && mouseY < button.rect.y + button.rect.h);
+}
+
+void resetGame(vector<SnakeSegment>& snake, char& currentDirection, Food& food, int& points) {
+    snake.clear();
+    int initialX = SCREEN_WIDTH / 2;
+    int initialY = SCREEN_HEIGHT / 2;
+    for (int i = 0; i < INITIAL_SNAKE_LENGTH; ++i) {
+        snake.push_back({initialX - i * SNAKE_SIZE, initialY});
+    }
+
+    repositionFood(food);
+    currentDirection = 'R';
+    points = 0;
 }
 
 int main(int argc, char* argv[]) {
@@ -173,7 +220,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    TTF_Font* font = TTF_OpenFont("font11.ttf", 70);
+    TTF_Font* font = TTF_OpenFont("font2.ttf", 40);
     if (!font) {
         cout << "Font loading failed: \n" << TTF_GetError() << endl;
         return 1;
@@ -198,45 +245,88 @@ int main(int argc, char* argv[]) {
     int points = 0;
     GameState gameState = MAIN_MENU;
 
+    vector<Button> buttons = {
+        {{SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 200, 50}, "Play Game", false},
+        {{SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 10, 200, 50}, "Options", false},
+        {{SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 70, 200, 50}, "Exit", false}
+    };
+
+    vector<Button> gameOverButtons = {
+        {{SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2, 200, 50}, "Play Again", false},
+        {{SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 60, 200, 50}, "Exit", false}
+    };
+
     while (running) {
+        int mouseX, mouseY;
+        SDL_GetMouseState(&mouseX, &mouseY);
+
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 running = false;
-            } else if (event.type == SDL_KEYDOWN) {
+            } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 if (gameState == MAIN_MENU) {
-                    if (event.key.keysym.sym == SDLK_RETURN) {
-                        gameState = GAMEPLAY;
+                    for (auto& button : buttons) {
+                        if (button.isHovered) {
+                            if (button.text == "Play Game") {
+                                gameState = GAMEPLAY;
+                                resetGame(snake, currentDirection, food, points);
+                            } else if (button.text == "Options") {
+                                // Handle options click
+                            } else if (button.text == "Exit") {
+                                running = false;
+                            }
+                        }
                     }
-                } else if (gameState == GAMEPLAY) {
-                    switch (event.key.keysym.sym) {
-                        case SDLK_UP:
-                            if (currentDirection != 'D')
-                                currentDirection = 'U';
-                            break;
-                        case SDLK_DOWN:
-                            if (currentDirection != 'U')
-                                currentDirection = 'D';
-                            break;
-                        case SDLK_LEFT:
-                            if (currentDirection != 'R')
-                                currentDirection = 'L';
-                            break;
-                        case SDLK_RIGHT:
-                            if (currentDirection != 'L')
-                                currentDirection = 'R';
-                            break;
-                        default:
-                            break;
+                } else if (gameState == GAME_OVER) {
+                    for (auto& button : gameOverButtons) {
+                        if (button.isHovered) {
+                            if (button.text == "Play Again") {
+                                gameState = GAMEPLAY;
+                                resetGame(snake, currentDirection, food, points);
+                            } else if (button.text == "Exit") {
+                                running = false;
+                            }
+                        }
                     }
+                }
+            } else if (event.type == SDL_KEYDOWN && gameState == GAMEPLAY) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_UP:
+                        if (currentDirection != 'D')
+                            currentDirection = 'U';
+                        break;
+                    case SDLK_DOWN:
+                        if (currentDirection != 'U')
+                            currentDirection = 'D';
+                        break;
+                    case SDLK_LEFT:
+                        if (currentDirection != 'R')
+                            currentDirection = 'L';
+                        break;
+                    case SDLK_RIGHT:
+                        if (currentDirection != 'L')
+                            currentDirection = 'R';
+                        break;
+                    default:
+                        break;
                 }
             }
         }
 
+        // Update button hover states
+        for (auto& button : buttons) {
+            button.isHovered = isMouseOverButton(button, mouseX, mouseY);
+        }
+
+        for (auto& button : gameOverButtons) {
+            button.isHovered = isMouseOverButton(button, mouseX, mouseY);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
         if (gameState == MAIN_MENU) {
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderClear(renderer);
-            renderMainMenu(renderer, font);
-            SDL_RenderPresent(renderer);
+            renderMainMenu(renderer, font, buttons);
         } else if (gameState == GAMEPLAY) {
             moveSnake(snake, currentDirection, grow);
             grow = false;
@@ -247,12 +337,8 @@ int main(int argc, char* argv[]) {
                 points += 10;
             }
 
-            if (checkSelfCollision(snake)) {
-                return 1;
-            }
-            if (checkBorderCollision(snake)) {
-                cout << "Game Over! Snake collided with window border." << endl;
-                running = false;
+            if (checkSelfCollision(snake) || checkBorderCollision(snake)) {
+                gameState = GAME_OVER;
             }
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -263,11 +349,12 @@ int main(int argc, char* argv[]) {
 
             SDL_Color textColor = {255, 255, 255, 255};
             renderText(renderer, "Score: " + to_string(points), 10, 10, font, textColor);
-
-            SDL_RenderPresent(renderer);
-
-            SDL_Delay(1000 / SNAKE_SPEED);
+        } else if (gameState == GAME_OVER) {
+            renderGameOver(renderer, font, points, gameOverButtons);
         }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(1000 / SNAKE_SPEED);
     }
 
     SDL_DestroyRenderer(renderer);
