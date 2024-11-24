@@ -24,15 +24,15 @@ enum GameState{
     INSTRUCTIONS
 };
 
-struct SnakeSegment {
+struct SnakeSegment{
     int x, y;
 };
 
-struct Food {
+struct Food{
     int x, y;
 };
 
-struct Button {
+struct Button{
     SDL_Rect rect;
     string text;
     bool isHovered;
@@ -81,7 +81,7 @@ bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer){
     return true;
 }
 
-SDL_Texture* loadTexture(const string &path, SDL_Renderer* renderer) {
+SDL_Texture* loadTexture(const string &path, SDL_Renderer* renderer){
     SDL_Texture* newTexture = NULL;
     SDL_Surface* loadedSurface = IMG_Load(path.c_str());
     if (loadedSurface == NULL) {
@@ -255,7 +255,6 @@ void renderInstructions(SDL_Renderer* renderer, TTF_Font* font){
     SDL_Color textColor = {255, 255, 255, 255}; // White text color
     renderText(renderer, "Instructions", SCREEN_WIDTH / 2 - 100, 100, font, textColor);
 
-    // Display instructions
     renderText(renderer, "1. Use arrow keys to move the snake.", 100, 200, font, textColor);
     renderText(renderer, "2. Eat food to grow the snake and gain points.", 100, 250, font, textColor);
     renderText(renderer, "3. Avoid colliding with the borders or yourself.", 100, 300, font, textColor);
@@ -291,24 +290,23 @@ int main(int argc, char* argv[]){
         cout << "Failed to load eat sound effect: " << Mix_GetError() << endl;
         return 1;
     }
+    Mix_Chunk* gameOverEffect = Mix_LoadWAV("gOver.wav");
+    if(!gameOverEffect){
+        cout << "Failed to load game over sound effect: " << Mix_GetError() << endl;
+    }
 
     srand(time(0)); // Seed the random number generator
 
     vector<SnakeSegment> snake;
-    int initialX = SCREEN_WIDTH / 2;
-    int initialY = SCREEN_HEIGHT / 2;
-    for (int i = 0; i < INITIAL_SNAKE_LENGTH; ++i){
-        snake.push_back({initialX - i * SNAKE_SIZE, initialY});
-    }
-
     Food food;
-    repositionFood(food);
-
     char currentDirection = 'R';
+    int points = 0;
+
+    resetGame(snake, currentDirection, food, points);
+
     SDL_Event event;
     bool running = true;
     bool grow = false;
-    int points = 0;
 
     GameState gameState = MAIN_MENU;
 
@@ -327,10 +325,11 @@ int main(int argc, char* argv[]){
         int mouseX, mouseY;
         SDL_GetMouseState(&mouseX, &mouseY);
 
-        while (SDL_PollEvent(&event)) {
+        while (SDL_PollEvent(&event)){
             if (event.type == SDL_QUIT){
                 running = false;
-            } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
+            }
+            else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
                 if (gameState == MAIN_MENU){
                     for (auto& button : buttons){
                         if (button.isHovered){
@@ -356,7 +355,8 @@ int main(int argc, char* argv[]){
                         }
                     }
                 }
-            } else if (event.type == SDL_KEYDOWN && gameState == GAMEPLAY){
+            }
+            else if (event.type == SDL_KEYDOWN && gameState == GAMEPLAY){
                 switch (event.key.keysym.sym) {
                     case SDLK_UP:
                         if (currentDirection != 'D')
@@ -377,14 +377,15 @@ int main(int argc, char* argv[]){
                     default:
                         break;
                 }
-            } else if (event.type == SDL_KEYDOWN && gameState == INSTRUCTIONS) {
-            if (event.key.keysym.sym == SDLK_ESCAPE) {
-                gameState = MAIN_MENU; // Return to main menu on ESC
+            }
+            else if (event.type == SDL_KEYDOWN && gameState == INSTRUCTIONS){
+                if (event.key.keysym.sym == SDLK_ESCAPE){
+                    gameState = MAIN_MENU; // Return to main menu on ESC
+                }
             }
         }
-        }
         // Update button hover states
-        for (auto& button : buttons) {
+        for (auto& button : buttons){
             button.isHovered = isMouseOverButton(button, mouseX, mouseY);
         }
 
@@ -392,9 +393,10 @@ int main(int argc, char* argv[]){
             button.isHovered = isMouseOverButton(button, mouseX, mouseY);
         }
 
-        if (gameState == MAIN_MENU) {
+        if (gameState == MAIN_MENU){
             renderMainMenu(renderer, font, buttons, mainMenuBackground);
-        } else if (gameState == GAMEPLAY) {
+        }
+        else if (gameState == GAMEPLAY){
             moveSnake(snake, currentDirection, grow);
             grow = false;
 
@@ -407,6 +409,7 @@ int main(int argc, char* argv[]){
 
             if (checkSelfCollision(snake) || checkBorderCollision(snake)) {
                 gameState = GAME_OVER;
+                Mix_PlayChannel(-1, gameOverEffect, 0); // Play Game-Over Effect
             }
 
             SDL_RenderCopy(renderer, gameplayBackground, NULL, NULL); // Render the gameplay background
