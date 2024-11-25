@@ -35,7 +35,7 @@ struct Food{
 struct Button{
     SDL_Rect rect;
     string text;
-    bool isHovered;
+    bool isClicked;
 };
 
 bool initializeSDL(SDL_Window** window, SDL_Renderer** renderer){
@@ -96,11 +96,11 @@ SDL_Texture* loadTexture(const string &path, SDL_Renderer* renderer){
     return newTexture;
 }
 
-void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
-    for (size_t i = 0; i < snake.size(); ++i) {
+void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake){
+    for (size_t i = 0; i < snake.size(); ++i){
         SDL_Rect segmentRect = { snake[i].x, snake[i].y, SNAKE_SIZE, SNAKE_SIZE };
 
-        if (i == 0) {
+        if (i == 0){
             // Head of the snake
             SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); // Blue
             SDL_RenderFillRect(renderer, &segmentRect);
@@ -120,13 +120,20 @@ void drawSnake(SDL_Renderer* renderer, vector<SnakeSegment>& snake) {
     }
 }
 
-void drawFood(SDL_Renderer* renderer, Food& food) {
+void drawFood(SDL_Renderer* renderer, Food& food){
     SDL_Rect foodRect = { food.x, food.y, SNAKE_SIZE, SNAKE_SIZE };
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Red color for food
     SDL_RenderFillRect(renderer, &foodRect);
 }
 
-void moveSnake(vector<SnakeSegment>& snake, char direction, bool grow) {
+void drawPoisonusFood(SDL_Renderer* renderer, const Food& poisonusFood) {
+    SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255); // Poisonous food: white
+    SDL_Rect rect = { poisonusFood.x, poisonusFood.y, 10, 10 };
+    SDL_RenderFillRect(renderer, &rect);
+}
+
+
+void moveSnake(vector<SnakeSegment>& snake, char direction, bool grow){
     int newX = snake.front().x;
     int newY = snake.front().y;
 
@@ -154,16 +161,21 @@ void moveSnake(vector<SnakeSegment>& snake, char direction, bool grow) {
     }
 }
 
-bool checkFoodCollision(vector<SnakeSegment>& snake, Food& food) {
+bool checkFoodCollision(vector<SnakeSegment>& snake, Food& food){
     return (snake.front().x == food.x && snake.front().y == food.y);
 }
 
-void repositionFood(Food& food) {
+void repositionFood(Food& food){
     food.x = (rand() % (SCREEN_WIDTH / SNAKE_SIZE)) * SNAKE_SIZE;
     food.y = (rand() % (SCREEN_HEIGHT / SNAKE_SIZE)) * SNAKE_SIZE;
 }
 
-bool checkSelfCollision(vector<SnakeSegment>& snake) {
+void repositionPoisonusFood(Food& poisonusFood){
+    poisonusFood.x = rand() % (SCREEN_WIDTH / 10) * 10;  // Random x-coordinate
+    poisonusFood.y = rand() % (SCREEN_HEIGHT / 10) * 10; // Random y-coordinate
+}
+
+bool checkSelfCollision(vector<SnakeSegment>& snake){
     int headX = snake.front().x;
     int headY = snake.front().y;
 
@@ -175,12 +187,12 @@ bool checkSelfCollision(vector<SnakeSegment>& snake) {
     return false;
 }
 
-bool checkBorderCollision(vector<SnakeSegment>& snake) {
+bool checkBorderCollision(vector<SnakeSegment>& snake){
     int headX = snake.front().x;
     int headY = snake.front().y;
 
     // Check if snake's head is out of bounds
-    if (headX < 0 || headX >= SCREEN_WIDTH || headY < 0 || headY >= SCREEN_HEIGHT) {
+    if (headX < 0 || headX >= SCREEN_WIDTH || headY < 0 || headY >= SCREEN_HEIGHT){
         return true;
     }
 
@@ -198,8 +210,8 @@ void renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, T
 
 void renderButton(SDL_Renderer* renderer, Button& button, TTF_Font* font){
     SDL_Color textColor = {255, 255, 255, 255};
-    SDL_Color hoverColor = {200, 200, 200, 255};
-    SDL_Color color = button.isHovered ? hoverColor : textColor;
+    SDL_Color clickColor = {200, 200, 200, 255};
+    SDL_Color color = button.isClicked ? clickColor : textColor;
 
     SDL_SetRenderDrawColor(renderer, 60, 40, 0, 255); // Blackish brown color for button background
     SDL_RenderFillRect(renderer, &button.rect);
@@ -212,7 +224,7 @@ void renderMainMenu(SDL_Renderer* renderer, TTF_Font* font, std::vector<Button>&
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, background, NULL, NULL); // Render the background image
 
-    for (auto& button : buttons) {
+    for (auto& button : buttons){
         renderButton(renderer, button, font);
     }
 }
@@ -261,7 +273,15 @@ void renderInstructions(SDL_Renderer* renderer, TTF_Font* font){
     renderText(renderer, "4. Press ESC to return to the main menu.", 100, 350, font, textColor);
 }
 
+
+
+
 int main(int argc, char* argv[]){
+
+    int numOfFoodsConsumed = 0;
+    bool poisonusActive = false;
+    Uint32 poisonTime = 0;
+
     SDL_Window* window = NULL;
     SDL_Renderer* renderer = NULL;
 
@@ -294,11 +314,16 @@ int main(int argc, char* argv[]){
     if(!gameOverEffect){
         cout << "Failed to load game over sound effect: " << Mix_GetError() << endl;
     }
+    Mix_Chunk* mainMenu = Mix_LoadWAV("gOver.wav");
+    if(!gameOverEffect){
+        cout << "Failed to load game over sound effect: " << Mix_GetError() << endl;
+    }
 
     srand(time(0)); // Seed the random number generator
 
     vector<SnakeSegment> snake;
     Food food;
+    Food poisonusFood;
     char currentDirection = 'R';
     int points = 0;
 
@@ -332,26 +357,23 @@ int main(int argc, char* argv[]){
             else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
                 if (gameState == MAIN_MENU){
                     for (auto& button : buttons){
-                        if (button.isHovered){
-                            if (button.text == "Play Game") {
+                        if (button.isClicked){
+                            if (button.text == "Play Game"){
                                 gameState = GAMEPLAY;
                                 resetGame(snake, currentDirection, food, points);
-                            } else if (button.text == "Instructions") {
-                                gameState = INSTRUCTIONS;
-                            } else if (button.text == "Exit") {
-                                running = false;
-                            }
+                            } else if (button.text == "Instructions")
+                                    gameState = INSTRUCTIONS;
+                              else if (button.text == "Exit")
+                                    running = false; 
                         }
                     }
                 } else if (gameState == GAME_OVER){
                     for (auto& button : gameOverButtons){
-                        if (button.isHovered){
-                            if (button.text == "Return Main Menue"){
-                                gameState = MAIN_MENU;
-                                //resetGame(snake, currentDirection, food, points);
-                            } else if (button.text == "Exit"){
-                                running = false;
-                            }
+                        if (button.isClicked){
+                            if (button.text == "Return Main Menue")
+                                    gameState = MAIN_MENU;
+                            else if (button.text == "Exit")
+                                    running = false; 
                         }
                     }
                 }
@@ -380,19 +402,20 @@ int main(int argc, char* argv[]){
             }
             else if (event.type == SDL_KEYDOWN && gameState == INSTRUCTIONS){
                 if (event.key.keysym.sym == SDLK_ESCAPE){
-                    gameState = MAIN_MENU; // Return to main menu on ESC
+                    gameState = MAIN_MENU;
                 }
             }
         }
-        // Update button hover states
+
         for (auto& button : buttons){
-            button.isHovered = isMouseOverButton(button, mouseX, mouseY);
+            button.isClicked = isMouseOverButton(button, mouseX, mouseY);
         }
 
-        for (auto& button : gameOverButtons) {
-            button.isHovered = isMouseOverButton(button, mouseX, mouseY);
+        for (auto& button : gameOverButtons){
+            button.isClicked = isMouseOverButton(button, mouseX, mouseY);
         }
 
+        
         if (gameState == MAIN_MENU){
             renderMainMenu(renderer, font, buttons, mainMenuBackground);
         }
@@ -400,14 +423,32 @@ int main(int argc, char* argv[]){
             moveSnake(snake, currentDirection, grow);
             grow = false;
 
-            if (checkFoodCollision(snake, food)) {
+            if (checkFoodCollision(snake, food)){
                 repositionFood(food);
                 grow = true;
                 points += 10;
-                Mix_PlayChannel(-1, eatSound, 0); // Play the eat sound effect
+                numOfFoodsConsumed++;
+                if (numOfFoodsConsumed % 4 == 0){
+                    poisonusActive = 1;
+                    repositionPoisonusFood(poisonusFood);
+                    poisonTime = SDL_GetTicks();
+                }
+                Mix_PlayChannel(-1, eatSound, 0);
             }
 
-            if (checkSelfCollision(snake) || checkBorderCollision(snake)) {
+            if (poisonusActive){
+                if (SDL_GetTicks() - poisonTime >= 4000){
+                    poisonusActive = 0;
+                }
+                if (checkFoodCollision(snake, poisonusFood)){
+                    points -= 10;
+                    poisonusActive = 0;
+                }
+            }
+
+            if(points < 0) gameState = GAME_OVER;
+
+            if (checkSelfCollision(snake) || checkBorderCollision(snake)){
                 gameState = GAME_OVER;
                 Mix_PlayChannel(-1, gameOverEffect, 0); // Play Game-Over Effect
             }
@@ -415,10 +456,13 @@ int main(int argc, char* argv[]){
             SDL_RenderCopy(renderer, gameplayBackground, NULL, NULL); // Render the gameplay background
             drawSnake(renderer, snake);
             drawFood(renderer, food);
+            if(poisonusActive){
+                drawPoisonusFood(renderer, poisonusFood);
+            }
 
             SDL_Color textColor = {255, 255, 255, 255};
             renderText(renderer, "Score: " + to_string(points), 10, 10, font, textColor);
-        } 
+        }
         else if (gameState == GAME_OVER){
             renderGameOver(renderer, font, points, gameOverButtons);
         }
@@ -426,11 +470,12 @@ int main(int argc, char* argv[]){
             renderInstructions(renderer, font);
         }
 
-         SDL_RenderPresent(renderer);
+        SDL_RenderPresent(renderer);
         SDL_Delay(1000 / SNAKE_SPEED);
     }
 
-     Mix_FreeChunk(eatSound);
+    Mix_FreeChunk(eatSound);
+    Mix_FreeChunk(gameOverEffect);
     SDL_DestroyTexture(mainMenuBackground);
     SDL_DestroyTexture(gameplayBackground);
     SDL_DestroyRenderer(renderer);
